@@ -1,45 +1,54 @@
 {{ define "title" }}
-	Login Provider Werther
+	地平线统一登录平台
 {{ end }}
 
 {{ define "style" }}
-	<link rel="stylesheet" href="static/style.css">
+    <link rel="stylesheet" href="static/style.css?version={{ .Version }}">
 {{ end }}
 
 {{ define "js" }}
-	<script type="text/javascript" src="static/script.js"></script>
 {{ end }}
 
 {{ define "content" }}
-	<div class="login-page">
-		<div class="form">
-			<p class="message">
-			{{ if .IsInvalidCredentials }}
-				Invalid username or password
-			{{ else if .IsInternalError }}
-				Internal server error
-			{{ else }}
-				&nbsp;
-			{{ end }}
-			</p>
-			<form class="login-form" action="{{ .LoginURL }}" method="POST">
+    <div class="login">
+        <div class="login-screen">
+            <div class="app-title">
+                <h1>开发账号登录</h1>
+            </div>
+            <form class="login-form"  action="{{ .URL }}" method="POST">
 				<input type="hidden" name="csrf_token" value={{ .CSRFToken }}>
 				<input type="hidden" name="login_challenge" value={{ .Challenge }}>
+                <div class="control-group">
+					<input type="text" class="login-field" value="" placeholder="用户名"  name="username" id="login-user" required>
+					<label class="login-field-icon fui-user" for="login-name"></label>
+                </div>
 
-				<input type="text" placeholder="username" name="username"/>
-				<input type="password" placeholder="password" name="password"/>
-
-				<div class="checkbox remember-container">
-					<div class="checkbox-overlay">
-						<input type="checkbox" name="remember" />
-						<div class="checkbox-container">
-							<div class="checkbox-checkmark"></div>
-						</div>
-						<label for="remember">Remember me</label>
-					</div>
+                <div class="control-group">
+					<input type="password" class="login-field" value="" placeholder="密码" name="password" id="login-pass" required>
+					<label class="login-field-icon fui-lock" for="login-pass"></label>
+                </div>
+				<div class="checkbox">
+					<input type="checkbox"  checked="true" name="remember" class="input-box" value="on" id="login-remember"/>
+					<label>在24小时内保持登录</label>
 				</div>
-				<button type="submit">login</button>
-			</form>
-		</div>
-	</div>
+                <button class="btn btn-primary btn-large btn-block" type="submit">登录</button>
+                {{ if .Challenge }}
+                    <a class="login-link" href="/auth/forget?login_challenge={{ .Challenge }}">忘记密码?</a>
+                {{ else }}
+                    <a class="login-link" href="/auth/forget">忘记密码?</a>
+                {{ end }}
+            </form>
+            {{ if .InvalidForm }}
+                <p class = "message">
+                    {{.ErrorMessage}}
+                </p>
+            {{ else if .SuccForm}}
+                <p class = "message-succ">
+                    {{.ErrorMessage}}
+                </p>
+            {{ else }}
+                &nbsp;
+            {{ end }}
+        </div>
+    </div>
 {{ end }}

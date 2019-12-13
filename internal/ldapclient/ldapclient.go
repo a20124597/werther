@@ -25,20 +25,19 @@ import (
 )
 
 var (
-	// errInvalidCredentials is an error that happens when a user's password is invalid.
-	errInvalidCredentials = fmt.Errorf("invalid credentials")
-	// errConnectionTimeout is an error that happens when no one LDAP endpoint responds.
-	errConnectionTimeout = fmt.Errorf("connection timeout")
-	// errMissedUsername is an error that happens
-	errMissedUsername = errors.New("username is missed")
-	// errUnknownUsername is an error that happens
-	errUnknownUsername = errors.New("unknown username")
+	// ErrInvalidCredentials is an error that means user's password is invalid.
+	ErrInvalidCredentials = errors.New("invalid credentials")
+	// ErrConnectionTimeout is an errorr that means no one ldap endpoint responds.
+	ErrConnectionTimeout = errors.New("connection timeout")
+	// ErrUnknownUsername means username does not exsit.
+	ErrUnknownUsername = errors.New("username unknown")
 )
 
 type conn interface {
 	Bind(bindDN, password string) error
 	SearchUser(user string, attrs ...string) ([]map[string]interface{}, error)
 	SearchUserRoles(user string, attrs ...string) ([]map[string]interface{}, error)
+	ResetPassword(userIden, newPass string) (bool, error)
 	Close()
 }
 
@@ -80,17 +79,14 @@ func New(cnf Config) *Client {
 // Authenticate authenticates a user with a username and password.
 // If no username or password in LDAP it returns false and no error.
 func (cli *Client) Authenticate(ctx context.Context, username, password string) (bool, error) {
-	if username == "" || password == "" {
-		return false, nil
-	}
-
+	// emailRexPattern is email regular expression.
 	var cancel context.CancelFunc
 	ctx, cancel = context.WithCancel(ctx)
 
-	cn, ok := <-cli.connect(ctx)
+	cn, ok := <-cli.connect(ctx, false)
 	cancel()
 	if !ok {
-		return false, errConnectionTimeout
+		return false, ErrConnectionTimeout
 	}
 	defer cn.Close()
 
@@ -99,14 +95,8 @@ func (cli *Client) Authenticate(ctx context.Context, username, password string) 
 	if err != nil {
 		return false, err
 	}
-	if details == nil {
-		return false, nil
-	}
 
 	if err := cn.Bind(details["dn"].(string), password); err != nil {
-		if err == errInvalidCredentials {
-			return false, nil
-		}
 		return false, err
 	}
 
@@ -119,12 +109,55 @@ func (cli *Client) Authenticate(ctx context.Context, username, password string) 
 	return true, nil
 }
 
+// UserSearch return user info.
+func (cli *Client) UserSearch(ctx context.Context, username string, attrs []string) (map[string]interface{}, error) {
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithCancel(ctx)
+
+	cn, ok := <-cli.connect(ctx, false)
+	cancel()
+	if !ok {
+		return nil, ErrConnectionTimeout
+	}
+	defer cn.Close()
+
+	// Find a user info username.
+	details, err := cli.findBasicUserDetails(cn, username, attrs)
+	if err != nil {
+		return nil, err
+	}
+	return details, nil
+}
+
+// PassReset reset user password.
+func (cli *Client) PassReset(ctx context.Context, username, newPass string) (bool, error) {
+	// emailRexPattern is email regular expression.
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithCancel(ctx)
+
+	cn, ok := <-cli.connect(ctx, true)
+	cancel()
+	if !ok {
+		return false, ErrConnectionTimeout
+	}
+	defer cn.Close()
+
+	// Find a user DN by his or her username.
+	details, err := cli.findBasicUserDetails(cn, username, []string{"dn"})
+	if err != nil {
+		return false, err
+	}
+	userIden := details["dn"].(string)
+	return cn.ResetPassword(userIden, newPass)
+}
+
+// PassModify modify user password.
+func (cli *Client) PassModify(ctx context.Context, username, oldPass, newPass string) (bool, error) {
+	return true, nil
+}
+
 // FindOIDCClaims finds all OIDC claims for a user.
 func (cli *Client) FindOIDCClaims(ctx context.Context, username string) (map[string]interface{}, error) {
-	if username == "" {
-		return nil, errMissedUsername
-	}
-
 	log := rlog.FromContext(ctx).Sugar()
 
 	// Retrieving from LDAP is slow. So, we try to get claims for the given username from the cache.
@@ -148,10 +181,10 @@ func (cli *Client) FindOIDCClaims(ctx context.Context, username string) (map[str
 	var cancel context.CancelFunc
 	ctx, cancel = context.WithCancel(ctx)
 
-	cn, ok := <-cli.connect(ctx)
+	cn, ok := <-cli.connect(ctx, false)
 	cancel()
 	if !ok {
-		return nil, errConnectionTimeout
+		return nil, ErrConnectionTimeout
 	}
 	defer cn.Close()
 
@@ -166,7 +199,7 @@ func (cli *Client) FindOIDCClaims(ctx context.Context, username string) (map[str
 		return nil, err
 	}
 	if details == nil {
-		return nil, errUnknownUsername
+		return nil, ErrUnknownUsername
 	}
 	log.Infow("Retrieved user's info from LDAP", "details", details)
 
@@ -233,17 +266,44 @@ func (cli *Client) FindOIDCClaims(ctx context.Context, username string) (map[str
 	return claims, nil
 }
 
-func (cli *Client) connect(ctx context.Context) <-chan conn {
+// SearchUserList return all users's info from ldap.
+func (cli *Client) SearchUserList(attrs []string) ([]map[string]interface{}, error) {
+	// connect to ldap server.
+	ctx, cancel := context.WithCancel(context.Background())
+	cn, ok := <-cli.connect(ctx, false)
+	cancel()
+	if !ok {
+		return nil, ErrConnectionTimeout
+	}
+	defer cn.Close()
+	if err := cn.Bind(cli.BindDN, cli.BindPass); err != nil {
+		return nil, ErrInvalidCredentials
+	}
+	username := "*"
+	entries, err := cn.SearchUser(username, attrs...)
+	if err != nil {
+		return nil, err
+	}
+	return entries, nil
+}
+
+// connect connect to ldap server and return the first server connect.
+// ldap server is master-slave mode, and master server address is at the
+// end of Endpoints. If masterNode is true, just connect to master node.
+func (cli *Client) connect(ctx context.Context, masterNode bool) <-chan conn {
 	var (
 		wg sync.WaitGroup
 		ch = make(chan conn)
 	)
-	wg.Add(len(cli.Endpoints))
-	for _, addr := range cli.Endpoints {
+	log := rlog.FromContext(ctx).Sugar()
+	endpoints := cli.Endpoints
+	if masterNode && len(endpoints) >= 1 {
+		endpoints = endpoints[len(endpoints)-1:]
+	}
+	wg.Add(len(endpoints))
+	for _, addr := range endpoints {
 		go func(addr string) {
 			defer wg.Done()
-
-			log := rlog.FromContext(ctx).Sugar()
 			cn, err := cli.connector.Connect(ctx, addr)
 			if err != nil {
 				log.Debug("Failed to create a LDAP connection", "address", addr)
@@ -280,7 +340,7 @@ func (cli *Client) findBasicUserDetails(cn conn, username string, attrs []string
 	}
 	if len(entries) != 1 {
 		// We didn't find the user.
-		return nil, nil
+		return nil, ErrUnknownUsername
 	}
 
 	var (
@@ -331,7 +391,7 @@ type ldapConn struct {
 func (c *ldapConn) Bind(bindDN, password string) error {
 	err := c.Conn.Bind(bindDN, password)
 	if ldapErr, ok := err.(*ldap.Error); ok && ldapErr.ResultCode == ldap.LDAPResultInvalidCredentials {
-		return errInvalidCredentials
+		return ErrInvalidCredentials
 	}
 	return err
 }
@@ -369,4 +429,16 @@ func (c *ldapConn) searchEntries(baseDN, query string, attrs []string) ([]map[st
 		entries = append(entries, entry)
 	}
 	return entries, nil
+}
+
+func (c *ldapConn) ResetPassword(userIden, newPass string) (bool, error) {
+	return c.updatePassword(userIden, "", newPass)
+}
+
+func (c *ldapConn) updatePassword(userIden, oldPass, newPass string) (bool, error) {
+	req := ldap.NewPasswordModifyRequest(userIden, oldPass, newPass)
+	if _, err := c.PasswordModify(req); err != nil {
+		return false, err
+	}
+	return true, nil
 }

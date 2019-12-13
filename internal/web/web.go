@@ -74,28 +74,28 @@ func NewHTMLRenderer(cnf Config) (*HTMLRenderer, error) {
 	return &HTMLRenderer{Config: cnf, mainTmpl: mainTmpl, fs: fs}, nil
 }
 
-// RenderTemplate renders a HTML page from a template with the specified name using the specified data.
-func (r *HTMLRenderer) RenderTemplate(w http.ResponseWriter, name string, data interface{}) error {
+// GetHTMLTemplate return web page info.
+func (r *HTMLRenderer) GetHTMLTemplate(name string, data interface{}) (*bytes.Buffer, error) {
 	f, err := r.fs.Open(name)
 	if err != nil {
 		if v, ok := err.(*os.PathError); ok {
 			if os.IsNotExist(v.Err) {
-				return fmt.Errorf("the template %q does not exist", name)
+				return nil, fmt.Errorf("the template %q does not exist", name)
 			}
 		}
-		return fmt.Errorf("failed to open template %q: %s", name, err)
+		return nil, fmt.Errorf("failed to open template %q: %s", name, err)
 	}
 	b, err := ioutil.ReadAll(f)
 	if err != nil {
-		return fmt.Errorf("failed to read template %q: %s", name, err)
+		return nil, fmt.Errorf("failed to read template %q: %s", name, err)
 	}
 	t, err := r.mainTmpl.Clone()
 	if err != nil {
-		return errors.Wrapf(err, "failed to clone the main template for template %q: %s", name, err)
+		return nil, errors.Wrapf(err, "failed to clone the main template for template %q: %s", name, err)
 	}
 	t, err = t.Parse(string(b))
 	if err != nil {
-		return errors.Wrapf(err, "failed to parse template %q: %s", name, err)
+		return nil, errors.Wrapf(err, "failed to parse template %q: %s", name, err)
 	}
 
 	var (
@@ -103,15 +103,23 @@ func (r *HTMLRenderer) RenderTemplate(w http.ResponseWriter, name string, data i
 		bw  = bufio.NewWriter(&buf)
 	)
 	if err = t.Execute(bw, map[string]interface{}{"WebBasePath": r.BasePath, "Data": data}); err != nil {
-		return err
+		return nil, err
 	}
 	if err = bw.Flush(); err != nil {
+		return nil, err
+	}
+	return &buf, nil
+}
+
+// RenderTemplate renders a HTML page from a template with the specified name using the specified data.
+func (r *HTMLRenderer) RenderTemplate(w http.ResponseWriter, name string, data interface{}) error {
+	buf, err := r.GetHTMLTemplate(name, data)
+	if err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, err = buf.WriteTo(w)
-	return err
-
+	return nil
 }
 
 var mainT = `{{ define "main" }}

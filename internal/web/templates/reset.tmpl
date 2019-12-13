@@ -1,0 +1,45 @@
+{{ define "title" }}
+	密码重置
+{{ end }}
+
+{{ define "style" }}
+    <link rel="stylesheet" href="static/style.css?version={{ .Version }}">
+{{ end }}
+
+{{ define "js" }}
+{{ end }}
+
+{{ define "content" }}
+    <div class="login" style="width:340px!important">
+        <div class="login-screen">
+            <div class="app-title">
+                <h1>密码重置</h1>
+            </div>
+            <form class="login-form"  action="{{ .URL }}" method="POST">
+				<input type="hidden" name="csrf_token" value={{ .CSRFToken }}>
+				<input type="hidden" name="login_challenge" value={{ .Challenge }}>
+                <div class="control-group">
+					<input type="text" class="login-field" value="{{.UserName}}" placeholder="{{.UserName}}"  name="username" readonly="readonly">
+					<label class="login-field-icon fui-user" for="login-name"></label>
+                </div>
+
+                <div class="control-group">
+					<input type="password" class="login-field" value="" placeholder="新密码" name="password" id="login-pass" required>
+					<label class="login-field-icon fui-lock" for="login-pass"></label>
+                </div>
+                <div class="control-group">
+					<input type="password" class="login-field" value="" placeholder="确认密码" name="re-password" id="login-repass" required>
+					<label class="login-field-icon fui-lock" for="login-pass"></label>
+                </div>
+                <button class="btn btn-primary btn-large btn-block" type="submit">密码重置</button>
+            </form>
+            <p class="message">
+			    {{ if .InvalidForm }}
+				    {{.ErrorMessage}}
+			    {{ else }}
+				    &nbsp;
+			    {{ end }}
+			</p>
+        </div>
+    </div>
+{{ end }}

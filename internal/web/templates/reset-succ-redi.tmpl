@@ -1,0 +1,30 @@
+{{ define "title" }}
+	{{ .Title }}
+{{ end }}
+
+{{ define "style" }}
+    <link rel="stylesheet" href="static/style.css?version={{ .Version }}">
+{{ end }}
+
+{{ define "js" }}
+    <script>
+    var t= {{ .InternalTime }}; 
+    setInterval("refer()",1000); // 1s 
+    function refer(){  
+        t--;
+        if(t==0){ 
+            location= {{ .JumpURL }};
+        }
+        document.getElementById('show').innerHTML=""+t+"秒后跳转到登录页";
+    }
+    </script>
+{{ end }}
+
+{{ define "content" }}
+    <div class="login">
+        <div class="login-screen" style="padding-bottom: 20px!important;">
+            <span id="show">{{ .InternalTime }}秒后跳转到登录页</span>
+            <a href="{{ .JumpURL }}">点击跳转</a>
+        </div>
+    </div>
+{{ end }}

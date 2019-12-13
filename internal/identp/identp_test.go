@@ -18,7 +18,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/i-core/werther/internal/hydra"
+	"werther/internal/hydra"
+
 	"github.com/justinas/nosurf"
 	"github.com/pkg/errors"
 )

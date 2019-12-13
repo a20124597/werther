@@ -1,0 +1,18 @@
+{{ define "title" }}
+    填写信息成功
+{{ end }}
+
+{{ define "style" }}
+    <link rel="stylesheet" href="static/style.css?version={{ .Version }}">
+{{ end }}
+
+{{ define "js" }}
+{{ end }}
+
+{{ define "content" }}
+    <div class="login">
+        <div class="login-screen" style="padding-bottom: 20px!important;">
+            <p> 重置链接已发送至邮箱 {{ .Email }} 请注意查收 </p>
+        </div>
+    </div>
+{{ end }}

@@ -5,7 +5,7 @@ This source code is licensed under the MIT license found in the
 LICENSE file in the root directory of this source tree.
 */
 
-package main // import "github.com/i-core/werther/cmd/werther"
+package main // import "werther/cmd/werther"
 
 import (
 	"flag"
@@ -14,12 +14,16 @@ import (
 	"net/url"
 	"os"
 
+	"werther/internal/cache"
+	"werther/internal/identp"
+	"werther/internal/ldapclient"
+	"werther/internal/stat"
+	"werther/internal/web"
+	_ "werther/pkg/auth"
+	_ "werther/pkg/emailclient"
+
 	"github.com/i-core/rlog"
 	"github.com/i-core/routegroup"
-	"github.com/i-core/werther/internal/identp"
-	"github.com/i-core/werther/internal/ldapclient"
-	"github.com/i-core/werther/internal/stat"
-	"github.com/i-core/werther/internal/web"
 	"github.com/justinas/nosurf"
 	"github.com/kelseyhightower/envconfig"
 	"go.uber.org/zap"
@@ -82,10 +86,18 @@ func main() {
 
 	ldap := ldapclient.New(cnf.LDAP)
 
+	memCacheClient := cache.NewMemCacheHandler(ldap)
+	if err := memCacheClient.CacheLdapUsers(); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to cache ldap's info: %s\n", err)
+		os.Exit(1)
+	}
+	go memCacheClient.UpdateCronJob()
+
 	router := routegroup.NewRouter(nosurf.NewPure, rlog.NewMiddleware(log))
 	router.AddRoutes(web.NewStaticHandler(cnf.Web), "/static")
 	router.AddRoutes(identp.NewHandler(cnf.Identp, ldap, htmlRenderer), "/auth")
 	router.AddRoutes(stat.NewHandler(version), "/stat")
+	router.AddRoutes(memCacheClient, "/search")
 
 	log = log.Named("main")
 	log.Info("Werther started", zap.Any("config", cnf), zap.String("version", version))

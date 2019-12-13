@@ -9,7 +9,8 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/i-core/werther/internal/hydra"
+	"werther/internal/hydra"
+
 	"github.com/pkg/errors"
 )
 

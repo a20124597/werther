@@ -1,0 +1,36 @@
+{{ define "title" }}
+	忘记密码
+{{ end }}
+
+{{ define "style" }}
+    <link rel="stylesheet" href="static/style.css?version={{ .Version }}">
+{{ end }}
+
+{{ define "js" }}
+{{ end }}
+
+{{ define "content" }}
+    <div class="login" style="width:340px!important">
+        <div class="login-screen">
+            <div class="app-title">
+                <h1>忘记密码</h1>
+            </div>
+            <form class="login-form"  action="{{ .URL }}" method="POST">
+                <input type="hidden" name="csrf_token" value={{ .CSRFToken }}>
+				<input type="hidden" name="login_challenge" value={{ .Challenge }}>
+                <div class="control-group">
+					<input type="text" class="login-field" value="" placeholder="填写用户名"  name="username" id="login-user" required>
+					<label class="login-field-icon fui-user" for="login-name"></label>
+                </div>
+                <button class="btn btn-primary btn-large btn-block" type="submit" >提交</button>
+            </form>
+            <p class="message">
+			    {{ if .InvalidForm }}
+				    {{ .ErrorMessage }}
+			    {{ else }}
+				    &nbsp;
+			    {{ end }}
+			</p>
+        </div>
+    </div>
+{{ end }}
